@@ -47,4 +47,12 @@ class PhotoLibraryManager {
         let status = await requestAccess()
         return status == .authorized
     }
+    
+    static func getAllOfEm() async -> PHFetchResult<PHAsset>? {
+        
+        if (await !hasFullAccess()) {return nil}
+        let everything = PHAsset.fetchAssets(with: .image, options: nil) // this is gets all images
+        
+        return everything
+    }
 }
