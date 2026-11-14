@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 import Photos
 
 struct ContentView: View {
@@ -13,19 +14,12 @@ struct ContentView: View {
     @State private var hasPhotoAccess = false
 
     var body: some View {
-        VStack {
-            Text("Metadata")
-                .font(.largeTitle)
-
-            Button("Allow Photo Library Access") {
-                Task {
-                    let status = await requestAccess()
-                    hasPhotoAccess = status == .authorized
-                }
-            }
-
-            if hasPhotoAccess {
-                ResultsView()
+        NavigationView {
+            VStack {
+                SettingsView(hasPhotoAccess: $hasPhotoAccess)
+                NavigationLink(destination: ResultsView()) {
+                    Text("Next")
+                }.disabled(!hasPhotoAccess)
             }
         }
     }
@@ -33,7 +27,7 @@ struct ContentView: View {
 
 
 
-//#Preview {
-//    ContentView()
-//        .modelContainer(for: Item.self, inMemory: true)
-//}
+#Preview {
+    ContentView()
+        .modelContainer(for: Item.self, inMemory: true)
+}
