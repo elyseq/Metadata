@@ -14,7 +14,7 @@ struct ContentView: View {
     @State private var hasPhotoAccess = false
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack {
                 SettingsView(hasPhotoAccess: $hasPhotoAccess)
                 NavigationLink(destination: ResultsView()) {

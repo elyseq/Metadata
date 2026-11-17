@@ -31,6 +31,19 @@
 import Foundation
 import Photos
 import CoreLocation
+import MapKit
+
+extension CLLocationCoordinate2D: @retroactive Equatable {}
+extension CLLocationCoordinate2D: @retroactive Hashable {
+    public static func == (lhs: CLLocationCoordinate2D, rhs: CLLocationCoordinate2D) -> Bool {
+        return lhs.latitude == rhs.latitude && lhs.longitude == rhs.longitude
+    }
+    
+    public func hash(into hasher: inout Hasher) {
+            hasher.combine(latitude)
+            hasher.combine(longitude)
+        }
+}
 
 
 func requestAccess() async -> PHAuthorizationStatus {
@@ -137,4 +150,33 @@ func sampleInferences(records: [PhotoRecord]) async -> Bool {
     let likelyHome = cells.max { $0.value.count < $1.value.count }
     
     return true
+}
+
+func homeInference(records: [PhotoRecord]) async -> ([MKMapItem], [MKMapItem:Int]) {
+    let geotagged = records.filter { $0.location != nil }
+    
+    // Likely "home": cluster geotagged photos taken between 10pm and 6am
+    let nightPhotos = geotagged.filter {
+        guard let d = $0.created else { return false }
+        let h = Calendar.current.component(.hour, from: d)
+        return h >= 22 || h < 6
+    }
+    // Round coordinates to ~100 m cells, then find the busiest cell
+    let cells = Dictionary(grouping: nightPhotos) { r -> CLLocationCoordinate2D in
+        let c: CLLocationCoordinate2D = r.location!.coordinate
+        return CLLocationCoordinate2D(latitude: round(c.latitude / 0.001) * 0.001, longitude: round(c.longitude / 0.001) * 0.001)
+    }
+    let likelyHomes = cells.sorted { $0.value.count > $1.value.count }.prefix(3).map({($0.key, $0.value.count)})
+    
+    var tempItems = [MKMapItem:Int]()
+    for (home, num) in likelyHomes {
+        if let request = MKReverseGeocodingRequest(location: CLLocation(latitude: home.latitude, longitude: home.longitude)) {
+            let mapitems = try? await request.mapItems
+            if let mapitem = mapitems?.first {
+                tempItems[mapitem] = num
+            }
+        }
+    }
+    let itemArray = tempItems.sorted{ $0.value > $1.value}.map(\.key)
+    return (itemArray, tempItems)
 }
