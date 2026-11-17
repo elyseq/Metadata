@@ -110,8 +110,8 @@ extension PhotoRecord {
     }
 }
 
-func loadRecords() async -> [PhotoRecord] {
-    guard await hasFullAccess() else { return [] }
+func loadRecords() -> [PhotoRecord] {
+//    guard await hasFullAccess() else { return [] }
 
     let options = PHFetchOptions()
     options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
@@ -127,8 +127,7 @@ func loadRecords() async -> [PhotoRecord] {
 }
 
 
-func sampleInferences(records: [PhotoRecord]) async -> Bool {
-    let geotagged = records.filter { $0.location != nil }
+func sampleInferences(records: [PhotoRecord]) -> Bool {
     let screenshots = records.filter(\.isScreenshot).count
     
     // Photos per year
@@ -136,7 +135,11 @@ func sampleInferences(records: [PhotoRecord]) async -> Bool {
         Calendar.current.component(.year, from: $0.created ?? .distantPast)
     }.mapValues(\.count)
     
-    // Likely "home": cluster geotagged photos taken between 10pm and 6am
+    return true
+}
+
+func likelyHome(records: [PhotoRecord]) -> String {
+    let geotagged = records.filter { $0.location != nil }
     let nightPhotos = geotagged.filter {
         guard let d = $0.created else { return false }
         let h = Calendar.current.component(.hour, from: d)
@@ -148,8 +151,8 @@ func sampleInferences(records: [PhotoRecord]) async -> Bool {
         return String(format: "%.3f,%.3f", c.latitude, c.longitude)
     }
     let likelyHome = cells.max { $0.value.count < $1.value.count }
-    
-    return true
+    let output = likelyHome?.key ?? "whoops"
+    return output
 }
 
 func homeInference(records: [PhotoRecord]) async -> ([MKMapItem], [MKMapItem:Int]) {
