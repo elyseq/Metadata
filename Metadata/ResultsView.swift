@@ -15,9 +15,15 @@ final class Inferences: LoadableModel {
     var records: [PhotoRecord] = []
     var items: [MKMapItem] = []
     var itemsDict: [MKMapItem:Int] = [:]
+    var photoCount = 0
+    var perDay: PhotosPerDay?
+    var sleep: SleepSchedule?
     
     override func load() async throws {
         records = await loadRecords()
+        photoCount = totalPhotos(records: records)
+        perDay = avgPhotosPerDay(records: records)
+        sleep = sleepSchedule(records: records)
         (items, itemsDict) = await homeInference(records: records)
     }
 }
@@ -52,6 +58,21 @@ struct ResultsView: View {
                         position = .item(item)
                     }
                 }
+            }
+            ResultSection(header: "Stats"){
+                LabeledContent("Total Photos", value: inferences.photoCount.formatted())
+                if let perDay = inferences.perDay {
+                    LabeledContent("Photos per day (overall)",
+                                   value: perDay.overall.formatted(.number.precision(.fractionLength(1))))
+                    LabeledContent("Photos per day (on days in which a photo was taken)",
+                                   value: perDay.onActiveDays.formatted(.number.precision(.fractionLength(1))))
+                }
+                if let sleep = inferences.sleep {
+                    LabeledContent("Likely bedtime", value: sleep.bedtime.formatted(date: .omitted, time: .shortened))
+                    LabeledContent("Likely wake-up time", value: sleep.wakeup.formatted(date: .omitted, time: .shortened))
+                    Text("Based on \(sleep.nights) nights of photo timestamps").font(.caption)
+                }
+                
             }
             ResultSection(header: "Header"){
                 Text("Content")
