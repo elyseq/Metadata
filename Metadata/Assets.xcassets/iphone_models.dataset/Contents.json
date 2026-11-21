@@ -1,0 +1,12 @@
+{
+  "data" : [
+    {
+      "filename" : "iphone_models.csv",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}
