@@ -61,14 +61,6 @@ func hasFullAccess() async -> Bool {
     return status == .authorized
 }
 
-func getAllOfEm() async -> PHFetchResult<PHAsset>? {
-    
-    if (await !hasFullAccess()) {return nil}
-    let everything = PHAsset.fetchAssets(with: .image, options: nil) // this is gets all images
-    
-    return everything
-}
-
 
 
 struct PhotoRecord {
@@ -110,9 +102,40 @@ extension PhotoRecord {
     }
 }
 
-func loadRecords() -> [PhotoRecord] {
-//    guard await hasFullAccess() else { return [] }
+nonisolated struct EXIFData {
+    let date: String?
+    let iosVersion: String?
+    let iphoneModel: String?
+}
 
+
+nonisolated func getEXIFMetadata(for asset: PHAsset) async -> EXIFData? {
+    let opts = PHImageRequestOptions()
+    opts.version = .original              // unedited original, keeps the original EXIF
+    opts.isNetworkAccessAllowed = false   // don't download from iCloud
+    opts.deliveryMode = .fastFormat
+
+    let data: Data? = await withCheckedContinuation { cont in
+        PHImageManager.default().requestImageDataAndOrientation(for: asset, options: opts) { data, _, _, _ in
+            cont.resume(returning: data)
+        }
+    }
+    guard let data,
+          let src = CGImageSourceCreateWithData(data as CFData, nil),
+          let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [String: Any]
+    else { return nil }
+
+    let tiff = props[kCGImagePropertyTIFFDictionary as String] as? [String: Any]
+    let exif = props[kCGImagePropertyExifDictionary as String] as? [String: Any]
+
+    return EXIFData(
+        date: exif?[kCGImagePropertyExifDateTimeOriginal as String] as? String,
+        iosVersion: tiff?[kCGImagePropertyTIFFSoftware as String] as? String,
+        iphoneModel: tiff?[kCGImagePropertyTIFFModel as String] as? String
+    )
+}
+
+func loadRecords() -> [PhotoRecord] {
     let options = PHFetchOptions()
     options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
     options.includeHiddenAssets = true   // hidden photos are excluded by default
@@ -124,6 +147,34 @@ func loadRecords() -> [PhotoRecord] {
         records.append(PhotoRecord(asset: asset))
     }
     return records
+}
+
+func randomIndexSet(count: Int, in range: Range<Int>) -> IndexSet {
+//    var set = IndexSet()
+//    while set.count < count {
+//        set.insert(Int.random(in: range))
+//    }
+    
+    return IndexSet((0..<count-1).map { i in
+        range.lowerBound + i * (range.upperBound-range.lowerBound) / (count - 1)
+    })
+}
+
+func getEXIFPhotosSelection(howMany: Int) async -> [EXIFData] {
+    let options = PHFetchOptions()
+    options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
+    options.includeHiddenAssets = true
+    let assets = PHAsset.fetchAssets(with: .image, options: options)
+    
+    let indices = randomIndexSet(count: howMany, in: 0..<assets.count)
+    var photos: [EXIFData] = []
+    
+    for asset in assets.objects(at: indices) {
+        if let exif = await getEXIFMetadata(for: asset) {
+            photos.append(exif)
+        }
+    }
+    return photos
 }
 
 

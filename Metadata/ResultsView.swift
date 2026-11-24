@@ -18,13 +18,23 @@ final class Inferences: LoadableModel {
     var photoCount = 0
     var perDay: PhotosPerDay?
     var sleep: SleepSchedule?
+    var exif: [EXIFData] = []
+    var updateLag: Int = 0
+    var hardwareLag: Int = 0
     
     override func load() async throws {
-        records = await loadRecords()
+        records = loadRecords()
         photoCount = totalPhotos(records: records)
         perDay = avgPhotosPerDay(records: records)
         sleep = sleepSchedule(records: records)
         (items, itemsDict) = await homeInference(records: records)
+        exif = await getEXIFPhotosSelection(howMany: 200)
+//        for e in exif {
+//            print((e.iosVersion ?? "not found") + " " + (e.iphoneModel ?? "not found") + " " + (e.date ?? "not found"))
+//        }
+        updateLag = averageUpdateLag(exif: exif) ?? 0
+        hardwareLag = averageHardwareLag(exif: exif) ?? 0
+        
     }
 }
 
@@ -67,6 +77,8 @@ struct ResultsView: View {
                     LabeledContent("Photos per day (on days in which a photo was taken)",
                                    value: perDay.onActiveDays.formatted(.number.precision(.fractionLength(1))))
                 }
+                LabeledContent("Average days waited to install software updates (i.e. how vulnerable you are)", value: inferences.updateLag.formatted())
+                LabeledContent("Average days waited to buy a new iPhone", value: inferences.hardwareLag.formatted())
                 if let sleep = inferences.sleep {
                     LabeledContent("Likely bedtime", value: sleep.bedtime.formatted(date: .omitted, time: .shortened))
                     LabeledContent("Likely wake-up time", value: sleep.wakeup.formatted(date: .omitted, time: .shortened))
@@ -74,9 +86,7 @@ struct ResultsView: View {
                 }
                 
             }
-            ResultSection(header: "Header"){
-                Text("Content")
-            }
+
         }
         .listStyle(SidebarListStyle())
         .navigationDestination(isPresented: $isShowingFullMap) {
