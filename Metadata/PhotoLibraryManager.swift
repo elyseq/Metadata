@@ -106,6 +106,9 @@ nonisolated struct EXIFData {
     let date: String?
     let iosVersion: String?
     let iphoneModel: String?
+    let make: String?
+    let lensModel: String?
+    let exposureProgram: String?
 }
 
 
@@ -131,7 +134,10 @@ nonisolated func getEXIFMetadata(for asset: PHAsset) async -> EXIFData? {
     return EXIFData(
         date: exif?[kCGImagePropertyExifDateTimeOriginal as String] as? String,
         iosVersion: tiff?[kCGImagePropertyTIFFSoftware as String] as? String,
-        iphoneModel: tiff?[kCGImagePropertyTIFFModel as String] as? String
+        iphoneModel: tiff?[kCGImagePropertyTIFFModel as String] as? String,
+        make: tiff?[kCGImagePropertyTIFFMake as String] as? String,
+        lensModel: tiff?[kCGImagePropertyExifLensModel as String] as? String,
+        exposureProgram: exif?[kCGImagePropertyExifExposureProgram as String] as? String
     )
 }
 

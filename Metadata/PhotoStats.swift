@@ -9,6 +9,7 @@ import Foundation
 import _LocationEssentials
 import ImageIO
 import Photos
+import UniformTypeIdentifiers
 
 /**moyartu: i added some functions to help work on some of the inferences; sectioning my stuff off just in case it breaks stuff*/
 // keyword nonisolated ensures it doesnt run on a main thread; which can slow things down if user has large lib
@@ -300,3 +301,159 @@ nonisolated func averageHardwareLag(exif: [EXIFData]) -> Int? {
     guard !lags.isEmpty else { return nil }
     return Int((Double(lags.reduce(0, +)) / Double(lags.count)).rounded())
 }
+
+/** Photographer inference*/
+nonisolated enum PhotographerHeuristics {
+    // if there are less than this num of photos then theres not enough data to determine
+    static let minExifSample = 30
+    static let minRawSample = 10
+    
+    //percentage of photos that would have to come from a dedicated camera to determine
+    static let someDedicatedShare = 0.05
+    static let mostlyDedicatedShare = 0.40
+    
+    static let rawCountThreshold = 10
+    static let manualModeShare = 0.10
+    static let proSoftwareShare = 0.02
+    
+    // score needed for verdict
+    static let hobbyistScore = 2
+    static let photographerScore = 5
+    
+    // models for dedicated cameras
+    static let cameraMakes: [String] = [
+        "canon", "nikon", "sony", "fujifilm", "panasonic", "olympus", "om digital", "leica", "pentax", "ricoh", "hasselblad", "sigma", "phase one"
+    ]
+    
+    // prefixes that indicate photo was taken by phone
+    static let phoneModelPrefixes: [String] = [
+        "iphone", "ipad", "xperia", "nexus", "oneplus", "samsung", "pixel", "sm-", "xq-"]
+    
+    static let proSoftware: [String] = ["lightroom", "photoshop", "capture one", "darktable", "luminar"]
+}
+
+nonisolated extension EXIFData {
+    var hasCameraData: Bool {
+        make != nil || iphoneModel != nil
+    }
+}
+
+nonisolated struct CameraCount: Hashable{
+    let name: String
+    let count: Int
+}
+
+nonisolated struct PhotographerInference {
+    nonisolated enum Verdict {
+        case notEnoughData, probablyNot, hobbyist, likelyPhotographer
+        var summary: String {
+            switch self {
+                case .notEnoughData: return "Not enough data to make a decision"
+            case .probablyNot: return "Probably not a photographer"
+            case .hobbyist: return "Hobbyist photographer"
+            case .likelyPhotographer: return "Likely a photographer"
+            }
+        }
+    }
+    
+    let verdict: Verdict
+    // photos w camera data
+    let exifSampleSize: Int
+    let dedicatedCameraShare: Double
+    // count raw files across lib
+    let rawCount: Int
+    let manualModeCount: Double
+    let topCameraModels: [CameraCount]
+}
+
+nonisolated func rawPhotoCounts(records: [PhotoRecord]) -> Int {
+    records.filter { record in
+        // using uti to check for raw photo data
+        guard let uti = record.uti, let type = UTType(uti) else { return false }
+        return type.conforms(to: .rawImage)
+    }.count
+}
+
+//scoring
+nonisolated func isDedicatedCamera(_ photo: EXIFData) -> Bool{
+    guard let make = photo.make?.lowercased() else { return false }
+    let model = photo.iphoneModel?.lowercased() ?? ""
+    if PhotographerHeuristics.phoneModelPrefixes.contains(where: {model.hasPrefix($0)}) {
+        return false
+    }
+    return PhotographerHeuristics.cameraMakes.contains {make.contains($0)}
+}
+
+nonisolated func usedManualControls(_ photo: EXIFData) -> Bool {
+    guard let program = photo.exposureProgram else { return false }
+    return ["1", "3", "4"].contains(program)
+}
+
+nonisolated func usedProSoftware (_ photo: EXIFData) -> Bool {
+    // ios version would be the tiff software str if shot on an iphone vs. lightroom if it was exported from an editor
+    guard let software = photo.iosVersion?.lowercased() else { return false }
+    return PhotographerHeuristics.proSoftware.contains {software.contains($0)}
+}
+
+nonisolated func cameraName(_ photo: EXIFData) -> String {
+    let make = photo.make?.trimmingCharacters(in: .whitespaces)
+    let model = photo.iphoneModel?.trimmingCharacters(in: .whitespaces)
+    switch (make, model){
+    case let (make?, model?):
+        return model.lowercased().hasPrefix(make.lowercased()) ? make : "\(make) \(model)"
+    case let (make?, nil):
+        return make
+    case let (nil, model?):
+        return model
+    case (nil, nil):
+        return "Unknown"
+    }
+}
+
+nonisolated func inferPhotographer(exif: [EXIFData], rawCount: Int) -> PhotographerInference {
+    // only look at photos w camera data since pics from msgs and web wouldnt rly say anything abt if user is a photographer
+    let withCamera = exif.filter(\.hasCameraData)
+    let n = withCamera.count
+    
+    func share (_ test: (EXIFData) -> Bool) -> Double {
+        n == 0 ? 0 : Double(withCamera.filter(test).count) / Double(n)
+    }
+    let dedicated = share(isDedicatedCamera)
+    let manual = share(usedManualControls)
+    let proSoftware = share(usedProSoftware)
+    
+    let topCameras = Dictionary(grouping: withCamera.compactMap(cameraName), by: {$0})
+        .map {CameraCount(name: $0.key, count: $0.value.count)}
+        .sorted { ($0.count, $1.name) > ($1.count, $0.name)} // most used cameras first
+        .prefix(3)
+        .map {$0}
+    
+    let verdict: PhotographerInference.Verdict
+    if n < PhotographerHeuristics.minExifSample && rawCount < PhotographerHeuristics.minRawSample {
+        verdict = .notEnoughData
+    } else {
+        var score = 0
+        if dedicated >= PhotographerHeuristics.mostlyDedicatedShare {
+            score += 3
+        }
+        else if dedicated >= PhotographerHeuristics.someDedicatedShare {
+            score += 2
+        }
+        if rawCount >= PhotographerHeuristics.rawCountThreshold {
+            score += 2
+        }
+        if manual >= PhotographerHeuristics.mostlyDedicatedShare {
+            score += 1
+        }
+        if proSoftware >= PhotographerHeuristics.mostlyDedicatedShare {
+            score += 1
+        }
+        
+        if score >= PhotographerHeuristics.photographerScore {verdict = .likelyPhotographer}
+        else if score >= PhotographerHeuristics.hobbyistScore {verdict = .hobbyist}
+        else {verdict = .probablyNot}
+}
+    return PhotographerInference(verdict: verdict, exifSampleSize: n, dedicatedCameraShare: dedicated, rawCount: rawCount, manualModeCount: manual, topCameraModels: topCameras)
+    
+}
+

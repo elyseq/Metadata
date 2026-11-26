@@ -19,8 +19,9 @@ final class Inferences: LoadableModel {
     var perDay: PhotosPerDay?
     var sleep: SleepSchedule?
     var exif: [EXIFData] = []
-    var updateLag: Int = 0
-    var hardwareLag: Int = 0
+    var updateLag: Int?
+    var hardwareLag: Int?
+    var photographer: PhotographerInference?
     
     override func load() async throws {
         records = loadRecords()
@@ -32,8 +33,9 @@ final class Inferences: LoadableModel {
 //        for e in exif {
 //            print((e.iosVersion ?? "not found") + " " + (e.iphoneModel ?? "not found") + " " + (e.date ?? "not found"))
 //        }
-        updateLag = averageUpdateLag(exif: exif) ?? 0
-        hardwareLag = averageHardwareLag(exif: exif) ?? 0
+        updateLag = averageUpdateLag(exif: exif)
+        hardwareLag = averageHardwareLag(exif: exif)
+        photographer = inferPhotographer(exif: exif, rawCount: rawPhotoCounts(records: records))
         
     }
 }
@@ -69,7 +71,7 @@ struct ResultsView: View {
                     }
                 }
             }
-            ResultSection(header: "Stats"){
+            ResultSection(header: "Photo habits"){
                 LabeledContent("Total Photos", value: inferences.photoCount.formatted())
                 if let perDay = inferences.perDay {
                     LabeledContent("Photos per day (overall)",
@@ -77,16 +79,36 @@ struct ResultsView: View {
                     LabeledContent("Photos per day (on days in which a photo was taken)",
                                    value: perDay.onActiveDays.formatted(.number.precision(.fractionLength(1))))
                 }
-                LabeledContent("Average days waited to install software updates (i.e. how vulnerable you are)", value: inferences.updateLag.formatted())
-                LabeledContent("Average days waited to buy a new iPhone", value: inferences.hardwareLag.formatted())
-                if let sleep = inferences.sleep {
-                    LabeledContent("Likely bedtime", value: sleep.bedtime.formatted(date: .omitted, time: .shortened))
-                    LabeledContent("Likely wake-up time", value: sleep.wakeup.formatted(date: .omitted, time: .shortened))
-                    Text("Based on \(sleep.nights) nights of photo timestamps").font(.caption)
+            }
+            
+            ResultSection(header: "Photography"){
+                if let photographer = inferences.photographer {
+                    LabeledContent("Are you a photographer?", value: photographer.verdict.summary)
+                    if let camera = photographer.topCameraModels.first {
+                        LabeledContent("Most used camera", value: camera.name)
+                    }
+                    Text("Based on \(photographer.exifSampleSize) photos with camera data, plus \(photographer.rawCount) RAW files").font(.caption)
                 }
                 
             }
-
+            
+            ResultSection(header: "Sleep inferences"){
+                if let sleep = inferences.sleep {
+                    LabeledContent("You likely go to bed after this time", value: sleep.bedtime.formatted(date: .omitted, time: .shortened))
+                    LabeledContent("You likely wake up before this time", value: sleep.wakeup.formatted(date: .omitted, time: .shortened))
+                    Text("Based on \(sleep.nights) nights of photo timestamps").font(.caption)
+                }
+            }
+            
+            ResultSection(header: "Your phone"){
+                if let hardwareLag = inferences.hardwareLag {
+                    LabeledContent("Typical wait before purchasing a new iPhone", value: formatDuration(days: hardwareLag))
+                }
+                if let updateLag = inferences.updateLag{
+                    LabeledContent("How long you wait to update iOS", value: formatDuration (days: updateLag))
+                    Text("i.e how vulnerable you are").font(.caption)
+                }
+            }
         }
         .listStyle(SidebarListStyle())
         .navigationDestination(isPresented: $isShowingFullMap) {
@@ -111,7 +133,15 @@ private struct MapView: View {
             position = .camera(context.camera)
         }
     }
-    
+}
+
+func formatDuration(days: Int) -> String {
+    guard days > 365 else {
+        return days == 1 ? "1 day" : "\(days) days"
+    }
+    let years = ((Double(days)) / 365 * 10).rounded() / 10
+    let text = years.formatted(.number.precision(.fractionLength(0...1)))
+    return years == 1 ? "\(text) year" : "\(text) years"
 }
 
 private struct ResultSection<Content: View>: View {
