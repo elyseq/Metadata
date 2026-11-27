@@ -49,7 +49,8 @@ struct ResultsView: View {
     
     var body: some View {
         List {
-            ResultSection(header: "Map"){
+            ResultSection(header: "Home, according your photos"){
+                Text("Based on where your photos were taken between 11pm and 6am.").font(.caption)
                 MapView(items: inferences.items, position: $position)
                     .frame(height: 300)
                     .clipShape(.rect(cornerRadius: 15))
@@ -71,12 +72,13 @@ struct ResultsView: View {
                     }
                 }
             }
-            ResultSection(header: "Photo habits"){
+            ResultSection(header: "Your photo habits"){
                 LabeledContent("Total Photos", value: inferences.photoCount.formatted())
+                ResultsSubheader(title: "Photos per day")
                 if let perDay = inferences.perDay {
-                    LabeledContent("Photos per day (overall)",
+                    LabeledContent("On average",
                                    value: perDay.overall.formatted(.number.precision(.fractionLength(1))))
-                    LabeledContent("Photos per day (on days in which a photo was taken)",
+                    LabeledContent("On days you take photos",
                                    value: perDay.onActiveDays.formatted(.number.precision(.fractionLength(1))))
                 }
             }
@@ -92,7 +94,7 @@ struct ResultsView: View {
                 
             }
             
-            ResultSection(header: "Sleep inferences"){
+            ResultSection(header: "Inferred sleep habits"){
                 if let sleep = inferences.sleep {
                     LabeledContent("You likely go to bed after this time", value: sleep.bedtime.formatted(date: .omitted, time: .shortened))
                     LabeledContent("You likely wake up before this time", value: sleep.wakeup.formatted(date: .omitted, time: .shortened))
@@ -101,9 +103,11 @@ struct ResultsView: View {
             }
             
             ResultSection(header: "Your phone"){
+                ResultsSubheader(title: "Hardware")
                 if let hardwareLag = inferences.hardwareLag {
                     LabeledContent("Typical wait before purchasing a new iPhone", value: formatDuration(days: hardwareLag))
                 }
+                ResultsSubheader(title: "Software")
                 if let updateLag = inferences.updateLag{
                     LabeledContent("How long you wait to update iOS", value: formatDuration (days: updateLag))
                     Text("i.e how vulnerable you are").font(.caption)
@@ -157,6 +161,17 @@ private struct ResultSection<Content: View>: View {
             Text(header)
         }
     )}
+}
+private struct ResultsSubheader: View {
+    let title: String
+    var body: some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundColor(.secondary)
+            .padding(.top, 2)
+            .padding(.bottom, 2)
+            .listRowSeparator(.hidden)
+    }
 }
 
 #Preview {

@@ -219,7 +219,7 @@ func homeInference(records: [PhotoRecord]) async -> ([MKMapItem], [MKMapItem:Int
     let nightPhotos = geotagged.filter {
         guard let d = $0.created else { return false }
         let h = Calendar.current.component(.hour, from: d)
-        return h >= 22 || h < 6
+        return h >= 23 || h < 6
     }
     // Round coordinates to ~100 m cells, then find the busiest cell
     let cells = Dictionary(grouping: nightPhotos) { r -> CLLocationCoordinate2D in
